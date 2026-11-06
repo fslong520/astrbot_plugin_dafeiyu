@@ -287,7 +287,7 @@ class SpeakerInjectTest(Harness):
     def test_format_rule_names_the_nickname_change(self):
         """认人 H1: the standing instruction tells the model renames happen."""
         self.assertIn(
-            "昵称会变：#括号内『曾用』名与现名指同一人",
+            "昵称会变：括号内『曾用』名与现名指同一人",
             plugin_main.FORMAT_INSTRUCTION,
         )
         self.assertIn("以注入档案为准，不以昵称为准", plugin_main.FORMAT_INSTRUCTION)
