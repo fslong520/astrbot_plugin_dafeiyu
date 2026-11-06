@@ -194,7 +194,31 @@ def legacy_group_scope(scope_mode, self_id, group_id):
     return f"qq:{bot_tag(self_id)}:group:{hashed_id(group_id)}"
 
 
-def group_recall_scopes(turn, member_hashes=None):
+#: One store project naming a group bucket: ``qq:<bot8>:group:<gid16>[:<uid16>]``.
+_GROUP_SCOPE_RE = re.compile(r"^qq:[0-9a-f]{8}:group:([0-9a-f]{16})(?::[0-9a-f]{16})?$")
+
+
+def group_ids_from_projects(projects):
+    """Distinct group hashes referenced by store projects, first seen first.
+
+    Feeds the private fan-out (三裁决③): every group bucket the store actually
+    holds — legacy member-less or per-member — contributes its 16-hex group
+    hash, whatever the bucket's author, so history written before a persons.json
+    reset stays reachable. Private, per-user, global and selfnote projects
+    yield nothing.
+    """
+    found = []
+    for value in projects or []:
+        match = _GROUP_SCOPE_RE.match(str(value or ""))
+        if not match:
+            continue
+        gid = match.group(1)
+        if gid not in found:
+            found.append(gid)
+    return found
+
+
+def group_recall_scopes(turn, member_hashes=None, user_groups=None):
     """Every scope a group read must cover, best bucket first.
 
     A group read must see the WHOLE group, not just the sender: memories are
@@ -207,11 +231,38 @@ def group_recall_scopes(turn, member_hashes=None):
     is empty (a caller that has not resolved members yet) the current sender is
     used, so the function never degrades to legacy-only.
 
-    Private chats and the ``per_user``/``global`` modes write to exactly one
-    scope and are unchanged.
+    Private chats under ``per_conversation`` fan out over the sender's OWN
+    group buckets too (三裁决③): ``user_groups`` is the sender's persons.json
+    ``groups`` list (16-hex group hashes), and each entry contributes the
+    sender's member bucket plus the legacy member-less bucket. Other members'
+    buckets are never added from a private read (documented limitation: a
+    private view sees the sender's own group memories, not the whole group).
+    ``per_user``/``global`` and a private read without known groups stay on
+    exactly one scope, as before.
     """
     if not getattr(turn, "is_group", False):
-        return [turn.scope]
+        if getattr(turn, "scope_mode", "per_conversation") != "per_conversation":
+            return [turn.scope]
+        groups = []
+        for item in user_groups or []:
+            token = str(item)
+            if token and token not in groups:
+                groups.append(token)
+        if not groups:
+            return [turn.scope]
+        bot = bot_tag(turn.self_id)
+        own = person_hash(turn.user_id)
+        scopes = [turn.scope]
+        seen = {turn.scope}
+        # Same bound as the group member fan-out (cap 8): one busy account
+        # cannot explode a private read into unbounded recall legs.
+        for gid in groups[:8]:
+            for scope in (f"qq:{bot}:group:{gid}:{own}", f"qq:{bot}:group:{gid}"):
+                if scope in seen:
+                    continue
+                seen.add(scope)
+                scopes.append(scope)
+        return scopes
 
     legacy = legacy_group_scope(
         getattr(turn, "scope_mode", "per_conversation"), turn.self_id, turn.group_id

@@ -17,6 +17,7 @@ from helpers import PLUGIN_ROOT  # noqa: F401  (puts the plugin root on sys.path
 from dafeiyu_policy import (
     Turn,
     derive_scope,
+    group_ids_from_projects,
     group_recall_scopes,
     bot_tag,
     hashed_id,
@@ -282,6 +283,92 @@ class TwoFakeSendersTests(unittest.TestCase):
         self.assertFalse(turn.is_group)
         self.assertEqual(group_recall_scopes(turn), [turn.scope])
         self.assertNotIn(":group:", turn.scope)
+
+
+class GroupIdsFromProjectsTests(unittest.TestCase):
+    """三裁决③: the private fan-out discovers groups from store metadata."""
+
+    def test_extracts_distinct_group_hashes_from_both_bucket_shapes(self):
+        projects = [
+            "qq:ae289cec:private:059a7a2b98b11027",
+            "qq:ae289cec:group:369eca30b05123ee",
+            "qq:ae289cec:group:369eca30b05123ee:059a7a2b98b11027",
+            "qq:ae289cec:group:5e3fcecc538f0b9b:059a7a2b98b11027",
+            "qq:ae289cec:selfnote",
+            "qq:ae289cec:user:059a7a2b98b11027",
+            "qq:global",
+            None,
+            "",
+        ]
+        self.assertEqual(
+            group_ids_from_projects(projects),
+            ["369eca30b05123ee", "5e3fcecc538f0b9b"],
+        )
+
+    def test_no_group_projects_yield_no_fanout(self):
+        self.assertEqual(group_ids_from_projects([]), [])
+        self.assertEqual(group_ids_from_projects(None), [])
+        self.assertEqual(
+            group_ids_from_projects(["qq:ae289cec:private:059a7a2b98b11027"]), []
+        )
+
+
+class PrivateGroupFanoutTests(unittest.TestCase):
+    """三裁决③: a private read also covers the sender's OWN group buckets."""
+
+    @staticmethod
+    def _member_bucket(gid_hash, user_id):
+        return f"qq:{bot_tag(BOT)}:group:{gid_hash}:{hashed_id(user_id)}"
+
+    def test_private_with_groups_fans_out_over_own_member_and_legacy(self):
+        gid = hashed_id(GROUP)
+        turn = private_turn(user_id=ALICE)
+        scopes = group_recall_scopes(turn, user_groups=[gid])
+        self.assertEqual(
+            scopes,
+            [
+                turn.scope,
+                self._member_bucket(gid, ALICE),
+                legacy_group_scope("per_conversation", BOT, GROUP),
+            ],
+        )
+        # The raw QQ id never reaches the store, even in the fan-out.
+        for scope in scopes:
+            self.assertNotIn(ALICE, scope)
+            self.assertNotIn(GROUP, scope)
+
+    def test_private_without_groups_stays_single_bucket(self):
+        turn = private_turn(user_id=ALICE)
+        self.assertEqual(group_recall_scopes(turn, user_groups=[]), [turn.scope])
+        # Omitting the parameter behaves identically (backward compatible).
+        self.assertEqual(group_recall_scopes(turn), [turn.scope])
+
+    def test_group_session_behavior_is_unchanged_by_user_groups(self):
+        # user_groups is ignored for a group read: whole-group fan-out only.
+        gid = hashed_id(GROUP)
+        scopes = group_recall_scopes(
+            group_turn(user_id=ALICE), [hashed_id(ALICE)], user_groups=[gid]
+        )
+        self.assertEqual(
+            scopes,
+            [
+                self._member_bucket(gid, ALICE),
+                legacy_group_scope("per_conversation", BOT, GROUP),
+            ],
+        )
+
+    def test_private_group_fanout_is_bounded_and_deduped(self):
+        many = [f"{index:016x}" for index in range(12)]
+        scopes = group_recall_scopes(private_turn(), user_groups=many + many)
+        # cap 8 groups x (member + legacy) + the private bucket itself.
+        self.assertEqual(len(scopes), 1 + 8 * 2)
+        self.assertEqual(len(set(scopes)), len(scopes))
+
+    def test_private_per_user_and_global_stay_single_scope(self):
+        for mode in ("per_user", "global"):
+            turn = private_turn(scope_mode=mode)
+            scopes = group_recall_scopes(turn, user_groups=[hashed_id(GROUP)])
+            self.assertEqual(scopes, [turn.scope], mode)
 
 
 if __name__ == "__main__":

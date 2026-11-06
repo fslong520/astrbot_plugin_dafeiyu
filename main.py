@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
@@ -58,6 +59,7 @@ try:  # package import when loaded as a plugin package
         excerpt_text,
         format_recall_message,
         format_recall_reply,
+        group_ids_from_projects,
         group_recall_scopes,
         hash_query,
         hashed_id,
@@ -132,6 +134,7 @@ except ImportError:  # direct module import (tests, scripts)
         excerpt_text,
         format_recall_message,
         format_recall_reply,
+        group_ids_from_projects,
         group_recall_scopes,
         hash_query,
         hashed_id,
@@ -661,6 +664,65 @@ class DafeiyuPlugin(Star):
             members.append(key)
         return members
 
+    #: How long a store-wide group-scope scan stays fresh for a private read.
+    _GROUP_SCAN_TTL_S = 600.0
+
+    async def _private_group_ids(self, turn):
+        """Group hashes a private read must fan out over (三裁决③).
+
+        Union of two sources, because either alone can be stale: the sender's
+        persons.json ``groups`` (fresh for a brand-new group, recorded on the
+        first message) and a cached scan of the store's own metadata (covers
+        groups whose person record was lost to a persons.json reset). A group
+        turn, a failed scan or a broken profile contributes nothing — the read
+        fails open onto fewer scopes, never an error.
+        """
+        if getattr(turn, "is_group", False):
+            return []
+        groups = []
+        try:
+            record = self.state.read_person(person_hash(turn.user_id)) or {}
+            if isinstance(record, dict):
+                groups.extend(
+                    str(item) for item in (record.get("groups") or []) if str(item)
+                )
+        except Exception:  # noqa: BLE001 - fail open: a broken profile must not kill recall
+            pass
+        now = time.monotonic()
+        cached = getattr(self, "_group_scan", None)
+        if not cached or now - cached[0] >= self._GROUP_SCAN_TTL_S:
+            scanned = None
+            try:
+                result = await self.rsrs.run(
+                    ["list", "--limit", "50000", "--metadata", "--json"],
+                    timeout_ms=self.config["recall_timeout_ms"],
+                    allow_failure=True,
+                )
+                envelope = result.get("envelope")
+                if isinstance(envelope, dict) and envelope.get("status") in ("ok", "skip"):
+                    projects = [
+                        item.get("project")
+                        for item in (envelope.get("details") or [])
+                        if isinstance(item, dict)
+                    ]
+                    scanned = group_ids_from_projects(projects)
+            except Exception:  # noqa: BLE001 - fail open: skip this scan, retry on the next read
+                scanned = None
+            if scanned is not None:
+                # Only a confirmed scan is cached; failures retry next read.
+                self._group_scan = (now, scanned)
+                cached = (now, scanned)
+        for gid in cached[1] if cached else []:
+            if gid not in groups:
+                groups.append(gid)
+        return groups
+
+    async def _recall_scopes(self, turn):
+        """Scope fan-out for one read: whole group, or the private sender's own buckets."""
+        if getattr(turn, "is_group", False):
+            return group_recall_scopes(turn, self._group_member_hashes(turn))
+        return group_recall_scopes(turn, user_groups=await self._private_group_ids(turn))
+
     def _annotate_speakers(self, items, turn):
         """Prefix every recalled title with ``[昵称/relation]`` in place.
 
@@ -783,7 +845,7 @@ class DafeiyuPlugin(Star):
             plan = plan_recall(self.config["retrieval"], environment["learn_available"], environment["bge_available"])
             envelope = await self._recall_fanout(
                 query,
-                group_recall_scopes(turn, self._group_member_hashes(turn)),
+                await self._recall_scopes(turn),
                 self.config["recall_limit"],
                 plan["use_lexical"],
             )
@@ -986,7 +1048,7 @@ class DafeiyuPlugin(Star):
         )
         try:
             envelope = await self._recall_fanout(
-                text, group_recall_scopes(turn, self._group_member_hashes(turn)), 20, plan["use_lexical"]
+                text, await self._recall_scopes(turn), 20, plan["use_lexical"]
             )
         except RsrsError as exc:
             return f"recall failed: {clip(str(exc), 200)}"
@@ -1861,7 +1923,7 @@ class DafeiyuPlugin(Star):
         try:
             envelope = await self._recall_fanout(
                 query,
-                group_recall_scopes(turn, self._group_member_hashes(turn)),
+                await self._recall_scopes(turn),
                 self.config["recall_limit"],
                 plan["use_lexical"],
             )
