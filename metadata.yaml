@@ -12,7 +12,7 @@ desc: >-
   `learn train --from-labels` run can improve the residual reranker.
 version: 0.1.0
 author: fslong
-repo: https://github.com/fslong/astrbot_plugin_dafeiyu
+repo: https://github.com/fslong520/astrbot_plugin_dafeiyu
 astrbot_version: ">=4.16,<5"
 support_platforms:
   - aiocqhttp
