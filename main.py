@@ -108,7 +108,14 @@ try:  # package import when loaded as a plugin package
         update_args,
         truncate,
     )
-    from .dafeiyu_state import StateStore, append_log, now_ms
+    from .dafeiyu_state import (
+        PERSON_RELATIONS,
+        StateStore,
+        append_log,
+        now_ms,
+        person_hash,
+        person_is_admin,
+    )
     from .dafeiyu_selfnote import MAX_BRIEF, MAX_FULL, SelfNoteError, SelfNoteService
 except ImportError:  # direct module import (tests, scripts)
     from dafeiyu_config import resolve_config
