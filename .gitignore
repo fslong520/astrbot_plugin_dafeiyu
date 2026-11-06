@@ -1,0 +1,27 @@
+# Python run residue
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging / backups — never commit
+dist/
+build/
+*.egg-info/
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.bak
+*~
+
+# Environment & credentials (never commit)
+.env
+.env.*
+venv/
+.venv/
+
+# OS noise
+.DS_Store
+Thumbs.db

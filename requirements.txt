@@ -1,0 +1,9 @@
+# No third-party dependencies.
+#
+# The plugin uses only the Python standard library (asyncio, hashlib, json, os,
+# re, subprocess via asyncio, threading, time, datetime) plus the AstrBot runtime
+# that is already installed. Memory is provided by the external `rsrs` (respire)
+# CLI, which is discovered at runtime and never vendored here.
+#
+# Test suite (standard library only):
+#   python3 -m unittest discover -s tests -v

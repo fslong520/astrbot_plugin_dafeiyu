@@ -1,0 +1,265 @@
+{
+  "enabled": {
+    "type": "bool",
+    "description": "Master switch. When off, no recall, no diary and no commands do anything.",
+    "default": true
+  },
+  "auto_recall": {
+    "type": "bool",
+    "description": "Inject recalled titles into the LLM request for human messages.",
+    "default": true
+  },
+  "retrieval": {
+    "type": "string",
+    "description": "Recall strategy: auto (lexical when the self-learning build is present and BGE is absent), lexical, hybrid or granite (granite online fusion is not exposed; behaves like hybrid).",
+    "default": "auto"
+  },
+  "rsrs_bin": {
+    "type": "string",
+    "description": "Absolute path to the rsrs binary. Empty means auto-discovery (config > $RSRS_BIN > ~/.local/bin/rsrs-dafeiyu > ~/.rsrs/bin/rsrs > PATH).",
+    "default": ""
+  },
+  "data_dir": {
+    "type": "string",
+    "description": "Optional RSRS_DATA_DIR for the child process. Empty uses the CLI default.",
+    "default": ""
+  },
+  "rpc_port": {
+    "type": "int",
+    "description": "RSRS_RPC_PORT for the child process when data_dir is set (0 keeps the machine default). A non-default data dir must not share the single 15169 runtime, or writes silently land in the real library.",
+    "default": 15270
+  },
+  "recall_limit": {
+    "type": "int",
+    "description": "Maximum recalled titles per injection; 20 matches the respire hook title depth.",
+    "default": 20
+  },
+  "recall_budget_chars": {
+    "type": "int",
+    "description": "Hard character budget for the injected recall block.",
+    "default": 1500
+  },
+  "recall_excerpt_chars": {
+    "type": "int",
+    "description": "Verbatim head excerpt in characters for the top recalled record; 0 disables the extra show call and injects titles only.",
+    "default": 120
+  },
+  "recall_timeout_ms": {
+    "type": "int",
+    "description": "Recall timeout in milliseconds; the child is killed on timeout and the turn continues without memory.",
+    "default": 1800
+  },
+  "cooldown_ms": {
+    "type": "int",
+    "description": "Per-conversation minimum gap between two recall injections.",
+    "default": 30000
+  },
+  "same_query_cooldown_ms": {
+    "type": "int",
+    "description": "Minimum gap before the same query may be recalled again in one conversation.",
+    "default": 600000
+  },
+  "min_score_hybrid": {
+    "type": "float",
+    "description": "Cosine floor for hybrid recall items. Lexical (BM25) scores are never floor-filtered.",
+    "default": 0.42
+  },
+  "scope_mode": {
+    "type": "string",
+    "description": "per_conversation (default: one scope per group or private chat), per_user (private and group share the user scope — private facts may surface in groups), or global (one scope for every chat).",
+    "default": "per_conversation"
+  },
+  "admin_ids": {
+    "type": "list",
+    "description": "Raw QQ user ids allowed to reveal bodies in groups and to run admin commands. Kept only in AstrBot config, never written to memory.",
+    "default": []
+  },
+  "auto_diary": {
+    "type": "bool",
+    "description": "Store a short raw-continuity diary row after each answered turn.",
+    "default": true
+  },
+  "auto_diary_group": {
+    "type": "bool",
+    "description": "Also store diary rows for group chats. Off by default: group chatter is noisy.",
+    "default": false
+  },
+  "proactive": {
+    "type": "object",
+    "description": "Optional unverified reflection injection (default off: it can disrupt group chat).",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "Enable proactive reflection injection.",
+        "default": false
+      },
+      "max_items": {
+        "type": "int",
+        "description": "Maximum reflections per injection.",
+        "default": 1
+      },
+      "permission_turns": {
+        "type": "int",
+        "description": "Reflection injections allowed per permission window.",
+        "default": 5
+      },
+      "permission_ms": {
+        "type": "int",
+        "description": "Permission window length in milliseconds.",
+        "default": 1800000
+      },
+      "topic_cooldown_ms": {
+        "type": "int",
+        "description": "Per-topic reflection cooldown in milliseconds.",
+        "default": 86400000
+      },
+      "reflection_ttl_days": {
+        "type": "int",
+        "description": "Validity of stored reflections in days.",
+        "default": 7
+      },
+      "reflection_max_chars": {
+        "type": "int",
+        "description": "Maximum reflection title length.",
+        "default": 350
+      }
+    }
+  },
+  "selfnote": {
+    "type": "object",
+    "description": "Self-note: a small, versioned block inside the bot persona. The base rules outside the managed markers are never rewritten. `enabled` only gates the memory_selfnote LLM tool; the explicit /mem_selfnote commands always work so an admin can inspect or repair the block.",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "Allow the memory_selfnote LLM tool to rewrite the block. Manual /mem_selfnote commands are not gated by this switch.",
+        "default": true
+      },
+      "auto_enabled": {
+        "type": "bool",
+        "description": "Low-frequency automatic self-note refresh (default off). Only real replies in the owner's private chat count; a group chat, another user, a command turn or a secret turn never counts. When the count reaches every_sessions and at least min_interval_ms has passed since the last automatic attempt, the existing generate+apply path runs once in the background. A failed attempt retries no sooner than retry_backoff_ms.",
+        "default": false
+      },
+      "every_sessions": {
+        "type": "int",
+        "description": "Real private-owner replies required before an automatic refresh is attempted; clamped to 5-100.",
+        "default": 20
+      },
+      "min_interval_ms": {
+        "type": "int",
+        "description": "Minimum time between two automatic refresh attempts in milliseconds; at least 3600000 (1 hour), default 604800000 (7 days).",
+        "default": 604800000
+      },
+      "retry_backoff_ms": {
+        "type": "int",
+        "description": "After a failed automatic attempt, wait this long before trying again, in milliseconds; at least 600000 (10 minutes), default 21600000 (6 hours).",
+        "default": 21600000
+      },
+      "persona_id": {
+        "type": "string",
+        "description": "AstrBot persona id whose system_prompt carries the managed block.",
+        "default": "default"
+      },
+      "owner_id": {
+        "type": "string",
+        "description": "Raw QQ id whose private scope supplies evidence titles. Empty falls back to the first admin_ids entry. Kept only in AstrBot config, never written to memory.",
+        "default": ""
+      },
+      "parent_id": {
+        "type": "string",
+        "description": "Optional real rsrs id used as the causal parent of each self-note version. Needed for an important self-note when metadata v1 is off; also used when it is on. Empty means no parent and legacy mode stores a trivial record.",
+        "default": ""
+      },
+      "provider_id": {
+        "type": "string",
+        "description": "Chat provider id for generation. Empty uses the host's current provider.",
+        "default": ""
+      },
+      "evidence_limit": {
+        "type": "int",
+        "description": "Maximum recalled evidence titles sent to the generator; clamped to 1-20.",
+        "default": 20
+      },
+      "max_full_chars": {
+        "type": "int",
+        "description": "Stored preference for the full self-note cap; hard cap is 1200.",
+        "default": 1200
+      },
+      "max_brief_chars": {
+        "type": "int",
+        "description": "Stored preference for the persona block cap; hard cap is 300.",
+        "default": 300
+      }
+    }
+  },
+  "jobs": {
+    "type": "object",
+    "description": "Self-learning schedule. Training/encoder are off by default because the DSH plugin may already own them. The nightly maintenance pass is read-only (rsrs audit + review --due): it never deletes, updates or forgets a memory and runs even when jobs.enabled is false.",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "Run the daily training and weekly encoder schedule. Independent of maintenance_enabled.",
+        "default": false
+      },
+      "maintenance_enabled": {
+        "type": "bool",
+        "description": "Run the nightly read-only maintenance (rsrs audit --json and rsrs review --due --json). It only reads counters, never deletes, updates or forgets a memory, and it runs even when jobs.enabled is false.",
+        "default": true
+      },
+      "maintenance_hour": {
+        "type": "int",
+        "description": "Local hour of the nightly read-only maintenance run.",
+        "default": 4
+      },
+      "maintenance_minute": {
+        "type": "int",
+        "description": "Local minute of the nightly read-only maintenance run.",
+        "default": 0
+      },
+      "review_limit": {
+        "type": "int",
+        "description": "Due reviews requested by the maintenance pass and /mem_review; clamped to 1-100.",
+        "default": 20
+      },
+      "daily_hour": {
+        "type": "int",
+        "description": "Local hour of the daily learn train run.",
+        "default": 3
+      },
+      "daily_minute": {
+        "type": "int",
+        "description": "Local minute of the daily learn train run.",
+        "default": 30
+      },
+      "daily_limit": {
+        "type": "int",
+        "description": "Label cap passed to learn train.",
+        "default": 5000
+      },
+      "weekly_granite": {
+        "type": "bool",
+        "description": "Run the weekly Granite encoder script on Sunday 02:00 when it is installed.",
+        "default": true
+      },
+      "respire_repo": {
+        "type": "string",
+        "description": "Respire checkout that contains scripts/encoder/weekly_encoder.sh.",
+        "default": "~/Documents/respire/respire-cli"
+      },
+      "granite_model_dir": {
+        "type": "string",
+        "description": "Granite Embedding 97M R2 checkpoint directory.",
+        "default": "~/.rsrs/models/granite-97m-r2"
+      },
+      "anchor_dir": {
+        "type": "string",
+        "description": "Encoder state and index anchor directory.",
+        "default": "~/.rsrs/encoder"
+      }
+    }
+  },
+  "debug_log": {
+    "type": "bool",
+    "description": "Write plugin debug lines to <state>/logs/dafeiyu.log. Memory text is never logged.",
+    "default": false
+  }
+}

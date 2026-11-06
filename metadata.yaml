@@ -1,0 +1,18 @@
+name: astrbot_plugin_dafeiyu
+display_name: 大肥鱼记忆 (QQ)
+short_desc: Durable QQ memory backed by the shared rsrs (respire) store — recall, feedback, self-learning.
+desc: >-
+  Mobile-QQ memory adapter for the "大肥鱼" design. Gives a small QQ account run
+  through NapCat (OneBot v11 / aiocqhttp) durable memory and a self-learning loop
+  by delegating every read and write to the rsrs (respire) CLI — the same store
+  the DSH plugin uses, never a second memory store. Recalls per-account and
+  per-conversation hashed scopes, injects up to 20 titles inside 1500
+  characters as a temporary content part (the agent uses memory_recall / memory_show / memory_remember /
+  memory_update / memory_chain / memory_status tools), and labels recalls good/bad so a daily
+  `learn train --from-labels` run can improve the residual reranker.
+version: 0.1.0
+author: fslong
+repo: https://github.com/fslong/astrbot_plugin_dafeiyu
+astrbot_version: ">=4.16,<5"
+support_platforms:
+  - aiocqhttp
