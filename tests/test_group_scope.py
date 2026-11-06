@@ -26,6 +26,7 @@ from dafeiyu_policy import (
     sender_tag,
     speaker_header,
     turn_from_event,
+    with_past_names,
 )
 from dafeiyu_state import person_hash
 
@@ -311,6 +312,32 @@ class GroupIdsFromProjectsTests(unittest.TestCase):
         self.assertEqual(
             group_ids_from_projects(["qq:ae289cec:private:059a7a2b98b11027"]), []
         )
+
+
+class PastNameTests(unittest.TestCase):
+    """认人 H1: attribution headers carry the nickname history (曾用)."""
+
+    def test_header_carries_recent_past_names_deduped_and_capped(self):
+        turn = group_turn(sender_name="沉迷于球球无法自拔的小明")
+        header = speaker_header(
+            turn,
+            ["隐流之左", "沉迷于球球无法自拔的小明", "旧名乙", "旧名甲"],
+        )
+        self.assertEqual(
+            header,
+            "【发言人】沉迷于球球无法自拔的小明(曾用:隐流之左|旧名乙|旧名甲)",
+        )
+        # 总长截断：超长昵称历史不得撑爆归因行（防爆注入）。
+        rendered = with_past_names("现名", ["长" * 90, "霸" * 90])
+        self.assertLessEqual(len(rendered), len("现名(曾用:") + 48 + 2)
+
+    def test_no_history_renders_the_plain_name(self):
+        turn = group_turn(sender_name="阿鲤")
+        self.assertEqual(speaker_header(turn), "【发言人】阿鲤")
+        self.assertEqual(speaker_header(turn, []), "【发言人】阿鲤")
+        self.assertEqual(speaker_header(turn, ["阿鲤"]), "【发言人】阿鲤")
+        self.assertEqual(with_past_names("阿鲤", []), "阿鲤")
+        self.assertEqual(with_past_names("阿鲤", ["阿鲤"]), "阿鲤")
 
 
 class PrivateGroupFanoutTests(unittest.TestCase):

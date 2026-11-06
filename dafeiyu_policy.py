@@ -294,14 +294,47 @@ def group_recall_scopes(turn, member_hashes=None, user_groups=None):
     return scopes
 
 
-def speaker_header(turn):
+#: Rendered nickname-history budget for one attribution (anti-bloat).
+PAST_NAMES_MAX = 3
+PAST_NAMES_TOTAL_CHARS = 48
+
+
+def with_past_names(name, nicknames):
+    """``现名(曾用:旧1|旧2)`` — nickname history attached to one attribution.
+
+    History comes from ``persons.json nicknames``. Names equal to the current
+    one are dropped, repeats deduped, the most recent ≤3 kept, and the joined
+    part truncated to a fixed budget so a hostile nickname cannot bloat an
+    injected line. An empty history — or an empty current name — returns the
+    value untouched, so a plain speaker renders exactly as before.
+    """
+    current = str(name or "").strip()
+    history = [str(item).strip() for item in (nicknames or []) if str(item).strip()]
+    past = []
+    for item in history:
+        if item != current and item not in past:
+            past.append(item)
+    if not current or not past:
+        return current
+    past = past[-PAST_NAMES_MAX:]
+    joined = "|".join(past)
+    if len(joined) > PAST_NAMES_TOTAL_CHARS:
+        joined = joined[: PAST_NAMES_TOTAL_CHARS - 1] + "…"
+    return f"{current}(曾用:{joined})"
+
+
+def speaker_header(turn, past_names=None):
     """Attribution prefix naming the speaker of a stored memory.
 
     Falls back to the hashed id when the host exposes no sender name, so a raw
-    QQ id never reaches the store.
+    QQ id never reaches the store. ``past_names`` (the person's nickname
+    history) renders as 现名(曾用:…), keeping a renamed member recognisable;
+    without history the header is byte-identical to the old one.
     """
     name = (getattr(turn, "sender_name", "") or "").strip()
-    return f"【发言人】{name or person_hash(turn.user_id)}"
+    if not name:
+        return f"【发言人】{person_hash(turn.user_id)}"
+    return f"【发言人】{with_past_names(name, past_names)}"
 
 
 def sender_tag(turn):

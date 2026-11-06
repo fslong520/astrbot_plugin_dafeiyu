@@ -284,6 +284,25 @@ class SpeakerInjectTest(Harness):
         self.assertIn("**", text)  # the rule must name the offending syntax
         self.assertIn("<system-reminder>", text)
 
+    def test_format_rule_names_the_nickname_change(self):
+        """认人 H1: the standing instruction tells the model renames happen."""
+        self.assertIn(
+            "昵称会变：#括号内『曾用』名与现名指同一人",
+            plugin_main.FORMAT_INSTRUCTION,
+        )
+        self.assertIn("以注入档案为准，不以昵称为准", plugin_main.FORMAT_INSTRUCTION)
+
+    def test_speaker_label_carries_past_names(self):
+        record = {
+            "current_nickname": "新名",
+            "nicknames": ["旧名甲", "新名"],
+            "relation": "master",
+        }
+        self.assertEqual(
+            plugin_main.speaker_label("k", lambda _key: record),
+            "[新名(曾用:旧名甲)/master]",
+        )
+
     def test_machine_annotations_are_left_alone(self):
         """The rule governs what the fish SAYS, not the model-facing notes."""
         req = self.inject("why did the napcat bridge crash yesterday", group_id=GROUP, user_id=USER_A)

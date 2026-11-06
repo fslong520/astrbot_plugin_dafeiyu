@@ -79,6 +79,7 @@ try:  # package import when loaded as a plugin package
         speaker_header,
         topic_key,
         turn_from_event,
+        with_past_names,
     )
     from .dafeiyu_rsrs import (
         AUDIT_TIMEOUT_MS,
@@ -154,6 +155,7 @@ except ImportError:  # direct module import (tests, scripts)
         speaker_header,
         topic_key,
         turn_from_event,
+        with_past_names,
     )
     from dafeiyu_rsrs import (
         AUDIT_TIMEOUT_MS,
@@ -216,6 +218,7 @@ FORMAT_INSTRUCTION = (
     "1. 提到真人姓名、昵称、群名等称呼时一律用【】包裹，例如【百年江湖 随意沉浮】；\n"
     "2. 禁止星号：不要用 ** 或 * 包裹任何内容，QQ 会把星号原样显示出来；\n"
     "3. 不要用 markdown 的 #、>、` 等符号做排版。\n"
+    "4. 昵称会变：#括号内『曾用』名与现名指同一人；昵称不同但属同一档案/曾用名关联者视为同一人，以注入档案为准，不以昵称为准。\n"
     "（本条是给模型的常驻格式指令，不是记忆内容。）\n"
     "</system-reminder>"
 )
@@ -293,8 +296,9 @@ def speaker_label(person_key, resolve_person):
     if not isinstance(person, dict):
         return "[未知/stranger]"
     name = str(person.get("current_nickname") or "").strip() or "未知"
+    label = with_past_names(name, person.get("nicknames"))
     relation = str(person.get("relation") or "stranger")
-    return f"[{name}/{relation}]"
+    return f"[{label}/{relation}]"
 
 
 def _recall_id_map(envelope, items):
@@ -759,7 +763,8 @@ class DafeiyuPlugin(Star):
             if not name:
                 continue
             relation = str((person or {}).get("relation") or "stranger")
-            names.append(f"{name}/{relation}")
+            label = with_past_names(name, (person or {}).get("nicknames"))
+            names.append(f"{label}/{relation}")
         if not names:
             return None
         return f"本群成员：{'、'.join(names)}"
@@ -777,6 +782,18 @@ class DafeiyuPlugin(Star):
             if last_query and stamp - last_query < self.config["same_query_cooldown_ms"]:
                 return False, "same-query"
         return True, "ok"
+
+    def _speaker_past(self, turn):
+        """Nicknames of the speaker for attribution headers (persons.json).
+
+        Read-only and fail-open: a missing or broken record yields no
+        history, i.e. the byte-identical pre-task-15 header.
+        """
+        try:
+            record = self.state.read_person(person_hash(turn.user_id)) or {}
+        except Exception:  # noqa: BLE001 - attribution must never break a turn
+            return None
+        return record.get("nicknames") if isinstance(record, dict) else None
 
     async def _recall_fanout(self, query, scopes, limit, lexical):
         """Run one recall per scope and merge, deduplicating by short id.
@@ -1120,7 +1137,7 @@ class DafeiyuPlugin(Star):
         }
         kind_name = memory_type.strip().lower()
         kind = kind_map.get(kind_name, "context")
-        body = f"{speaker_header(turn)}\n【判断】{fact}\n【理由】{reasoning.strip() or '（未提供）'}"
+        body = f"{speaker_header(turn, self._speaker_past(turn))}\n【判断】{fact}\n【理由】{reasoning.strip() or '（未提供）'}"
         tag_parts = ["qq", kind_name, sender_tag(turn)]
         tag_parts.extend(part.strip() for part in tags.split(",") if part.strip())
         # metadata v1 gate: hypothesis/reflection/self and the artifact facet
@@ -1741,7 +1758,7 @@ class DafeiyuPlugin(Star):
         # T1-3: summaries are generated on every write path; the probe is
         # cached, and a gate-off host stays on the contract-0 write.
         typed_ok = bool((await self.rsrs.metadata_status()).get("enabled"))
-        content = f"{speaker_header(turn)}\n{decision['content']}"
+        content = f"{speaker_header(turn, self._speaker_past(turn))}\n{decision['content']}"
         args = remember_args(
             content,
             title=decision["title"],
