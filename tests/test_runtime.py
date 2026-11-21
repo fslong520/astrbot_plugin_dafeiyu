@@ -710,6 +710,64 @@ class CommandTest(Harness):
         self.assertIn("scope: qq:", text)
         self.assertNotIn("|", text)  # no markdown tables
 
+    def test_status_granite_three_states(self):
+        # The LLM tool `memory_status` (main.py:1443) used a two-state line:
+        # `ready` also means "weekly script can run", so a deleted script was
+        # reported as a missing model and scared users while the model was fine.
+        # Real detect_granite/detect_encoder_script, no mock.
+        model = self.tmp / "models" / "granite-97m-r2"
+        model.mkdir(parents=True)
+        (model / "model.safetensors").write_text("weights")
+        (model / "config.json").write_text("{}")
+        (model / "1_Pooling").mkdir()
+        plugin = self._make_plugin(
+            jobs={
+                "enabled": False,
+                "respire_repo": str(self.tmp / "no-repo"),
+                "granite_model_dir": str(model),
+                "anchor_dir": str(self.tmp / "no-anchor"),
+            }
+        )
+        text = asyncio.run(plugin.memory_status_tool(FakeEvent("x")))
+        self.assertIn("granite=installed (weekly_encoder=missing)", text)
+        self.assertNotIn("granite=missing", text)
+        self.assertNotIn("granite=ready", text)
+
+        # Model incomplete -> granite=missing <missing items>.
+        broken = self.tmp / "models" / "granite-broken"
+        broken.mkdir(parents=True)
+        (broken / "config.json").write_text("{}")
+        plugin2 = self._make_plugin(
+            jobs={
+                "enabled": False,
+                "respire_repo": str(self.tmp / "no-repo"),
+                "granite_model_dir": str(broken),
+                "anchor_dir": str(self.tmp / "no-anchor"),
+            }
+        )
+        text2 = asyncio.run(plugin2.memory_status_tool(FakeEvent("x")))
+        self.assertIn("granite=missing", text2)
+        self.assertIn("model.safetensors", text2)
+        self.assertNotIn("granite=installed", text2)
+
+        # Model + script both present -> granite=ready.
+        repo = self.tmp / "repo"
+        script = repo / "scripts" / "encoder" / "weekly_encoder.sh"
+        script.parent.mkdir(parents=True)
+        script.write_text("#!/bin/sh\n")
+        plugin3 = self._make_plugin(
+            jobs={
+                "enabled": False,
+                "respire_repo": str(repo),
+                "granite_model_dir": str(model),
+                "anchor_dir": str(self.tmp / "no-anchor"),
+            }
+        )
+        text3 = asyncio.run(plugin3.memory_status_tool(FakeEvent("x")))
+        self.assertIn("granite=ready", text3)
+        self.assertNotIn("granite=installed", text3)
+        self.assertNotIn("granite=missing", text3)
+
     def test_recall_command_returns_titles_only(self):
         out = self.run_command(self.plugin.mem_recall, FakeEvent("／mem_recall deploy failed"))
         text = out[0][1]

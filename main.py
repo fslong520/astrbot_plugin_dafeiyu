@@ -1440,7 +1440,16 @@ class DafeiyuPlugin(Star):
             granite_model_dir=self.config["jobs"]["granite_model_dir"],
             respire_repo=self.config["jobs"]["respire_repo"],
         )
-        lines.append(f"granite={'ready' if encoder.get('ready') else 'missing'}")
+        # Three states, not a boolean: `ready` also covers "weekly script can be
+        # run", so a missing script used to be reported as a missing model and
+        # scared users while the encoder itself was fine. `ready` semantics in
+        # dafeiyu_granite.py stay untouched.
+        if encoder.get("ready"):
+            lines.append("granite=ready")
+        elif encoder["model"]["installed"]:
+            lines.append("granite=installed (weekly_encoder=missing)")
+        else:
+            lines.append(f"granite=missing {', '.join(encoder['model']['missing'])}")
         return clip("\n".join(lines), 800)
 
     @_llm_tool("memory_audit")
